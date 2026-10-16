@@ -31,6 +31,14 @@ CONF_NIGHT_ON_HOLIDAYS: Final = "night_on_holidays"
 # When off, the Nord Pool spot is ignored and the margin is the fixed energy
 # price of a fixed-price contract (EUR/kWh incl. VAT).
 CONF_USE_SPOT_PRICE: Final = "use_spot_price"
+# Form-only field: the date the edited tariff starts to apply. The tariff it
+# replaces is archived in CONF_TARIFF_HISTORY so earlier hours keep their price.
+CONF_TARIFF_EFFECTIVE_FROM: Final = "tariff_effective_from"
+# Stored list of closed tariff periods: [{"until": "YYYY-MM-DD", <tariff keys>}].
+CONF_TARIFF_HISTORY: Final = "tariff_history"
+# Fixed monthly charges incl. VAT (supplier + grid subscription), used only by
+# the bill forecast sensor.
+CONF_MONTHLY_FEES_EUR: Final = "monthly_fees_eur"
 DEFAULT_VAT_PERCENT: Final = 22.0
 DEFAULT_MARGIN_EUR_PER_KWH: Final = 0.0
 DEFAULT_FEES_EUR_PER_KWH: Final = 0.0
@@ -40,8 +48,9 @@ DEFAULT_NIGHT_END_HOUR: Final = 7
 DEFAULT_NIGHT_ON_WEEKENDS: Final = True
 DEFAULT_NIGHT_ON_HOLIDAYS: Final = True
 DEFAULT_USE_SPOT_PRICE: Final = True
-# Options that feed the tariff; changing any of them triggers a cost rebuild.
-TARIFF_OPTION_KEYS: Final = (
+DEFAULT_MONTHLY_FEES_EUR: Final = 0.0
+# Options that define one tariff (archived per period in CONF_TARIFF_HISTORY).
+TARIFF_PRICING_KEYS: Final = (
     CONF_VAT_PERCENT,
     CONF_MARGIN_EUR_PER_KWH,
     CONF_FEES_EUR_PER_KWH,
@@ -53,6 +62,21 @@ TARIFF_OPTION_KEYS: Final = (
     CONF_NIGHT_ON_HOLIDAYS,
     CONF_USE_SPOT_PRICE,
 )
+# Options that feed the cost statistics; changing any of them triggers a rebuild.
+TARIFF_OPTION_KEYS: Final = (*TARIFF_PRICING_KEYS, CONF_TARIFF_HISTORY)
+# Defaults of the tariff keys, used to snapshot a tariff that was never edited.
+TARIFF_DEFAULTS: Final = {
+    CONF_VAT_PERCENT: DEFAULT_VAT_PERCENT,
+    CONF_MARGIN_EUR_PER_KWH: DEFAULT_MARGIN_EUR_PER_KWH,
+    CONF_FEES_EUR_PER_KWH: DEFAULT_FEES_EUR_PER_KWH,
+    CONF_GRID_DAY_EUR_PER_KWH: DEFAULT_GRID_EUR_PER_KWH,
+    CONF_GRID_NIGHT_EUR_PER_KWH: DEFAULT_GRID_EUR_PER_KWH,
+    CONF_NIGHT_START_HOUR: DEFAULT_NIGHT_START_HOUR,
+    CONF_NIGHT_END_HOUR: DEFAULT_NIGHT_END_HOUR,
+    CONF_NIGHT_ON_WEEKENDS: DEFAULT_NIGHT_ON_WEEKENDS,
+    CONF_NIGHT_ON_HOLIDAYS: DEFAULT_NIGHT_ON_HOLIDAYS,
+    CONF_USE_SPOT_PRICE: DEFAULT_USE_SPOT_PRICE,
+}
 
 UPDATE_INTERVAL: Final = timedelta(hours=1)
 ROLLING_CACHE_DAYS: Final = 62

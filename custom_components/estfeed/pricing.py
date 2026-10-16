@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Container, Iterable, Mapping
+from collections.abc import Callable, Container, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, tzinfo
 from typing import Any
@@ -102,6 +102,57 @@ def make_tariff(
         )
 
     return tariff
+
+
+def scheduled_tariff(
+    schedule: Sequence[tuple[date, Tariff]], current: Tariff, tz: tzinfo
+) -> Tariff:
+    """Price each hour with the tariff that was in force on its local date.
+
+    ``schedule`` holds closed periods as ``(until, tariff)``: a period covers
+    local dates before ``until`` and after the previous period's ``until``.
+    Hours on or after the last ``until`` use ``current``. This keeps history
+    priced at the contract it was billed under when the tariff later changes.
+    """
+    ordered = sorted(schedule, key=lambda item: item[0])
+
+    def tariff(spot_eur_per_kwh: float, hour_utc: datetime) -> float:
+        local_day = hour_utc.astimezone(tz).date()
+        for until, period_tariff in ordered:
+            if local_day < until:
+                return period_tariff(spot_eur_per_kwh, hour_utc)
+        return current(spot_eur_per_kwh, hour_utc)
+
+    return tariff
+
+
+def insert_tariff_period(
+    history: Sequence[Mapping[str, Any]],
+    current: Mapping[str, Any],
+    effective_from: date,
+) -> list[dict[str, Any]]:
+    """Archive ``current`` so a new tariff starts applying on ``effective_from``.
+
+    ``history`` is the list of closed periods (each a tariff mapping with an
+    ISO ``"until"`` date); ``current`` is the tariff in force after the last
+    of them. The result closes whatever was in force on ``effective_from`` at
+    that date and drops periods that would only have started on or after it,
+    because the new tariff supersedes them. Earlier periods are untouched.
+    """
+    eff = effective_from.isoformat()
+    kept: list[dict[str, Any]] = []
+    prev_until: str | None = None
+    for period in sorted(history, key=lambda p: str(p["until"])):
+        if prev_until is not None and prev_until >= eff:
+            return kept
+        if str(period["until"]) > eff:
+            kept.append({**period, "until": eff})
+            return kept
+        kept.append(dict(period))
+        prev_until = str(period["until"])
+    if prev_until is None or prev_until < eff:
+        kept.append({**current, "until": eff})
+    return kept
 
 
 def cost_for_window(
