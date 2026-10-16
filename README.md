@@ -61,7 +61,15 @@ On a fixed-price (non-exchange) contract, turn **off** "Exchange (spot) price co
 (grid transfer + fees) × (1 + VAT%/100) + margin
 ```
 
-where **margin** is your fixed energy price per kWh incl. VAT. Grid day/night rates, weekends and public holidays work exactly as above, and changing the option rebuilds the cost history over the backfill window.
+where **margin** is your fixed energy price per kWh incl. VAT. Grid day/night rates, weekends and public holidays work exactly as above.
+
+### Changing contracts (tariff periods)
+
+When you edit the tariff, set **Tariff valid from** to the date the new contract starts. The tariff in force until then is archived as a period, so every hour before that date keeps the price it was billed at; only hours from that date on use the new tariff, and the cost history rebuild respects the periods. The date may lie in the future to schedule a switch. Leave the date empty only to correct a mistake for the whole history (this clears the archive). The options form lists the archived periods.
+
+### Price now and bill forecast
+
+Electricity meters also get `sensor.<n>_price_now` (EUR/kWh for the current hour under the tariff in force, refreshed hourly) and `sensor.<n>_bill_forecast` (this month's settled cost extrapolated to the whole month, plus **Monthly fees**; until a full day of the month has settled it uses the previous month's rate).
 
 ### Hourly price statistic
 
