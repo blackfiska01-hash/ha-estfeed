@@ -30,6 +30,7 @@ from .const import (
     CONF_NIGHT_ON_WEEKENDS,
     CONF_NIGHT_START_HOUR,
     CONF_RESOLUTION,
+    CONF_USE_SPOT_PRICE,
     CONF_VAT_PERCENT,
     DEFAULT_BACKFILL_MONTHS,
     DEFAULT_FEES_EUR_PER_KWH,
@@ -40,6 +41,7 @@ from .const import (
     DEFAULT_NIGHT_ON_HOLIDAYS,
     DEFAULT_NIGHT_ON_WEEKENDS,
     DEFAULT_NIGHT_START_HOUR,
+    DEFAULT_USE_SPOT_PRICE,
     DEFAULT_VAT_PERCENT,
     DOMAIN,
     MAX_BACKFILL_MONTHS,
@@ -169,6 +171,10 @@ class EstfeedOptionsFlow(OptionsFlow):
                     CONF_BACKFILL_MONTHS,
                     default=current.get(CONF_BACKFILL_MONTHS, DEFAULT_BACKFILL_MONTHS),
                 ): vol.All(int, vol.Range(min=MIN_BACKFILL_MONTHS, max=MAX_BACKFILL_MONTHS)),
+                vol.Required(
+                    CONF_USE_SPOT_PRICE,
+                    default=current.get(CONF_USE_SPOT_PRICE, DEFAULT_USE_SPOT_PRICE),
+                ): bool,
                 vol.Required(
                     CONF_VAT_PERCENT,
                     default=current.get(CONF_VAT_PERCENT, DEFAULT_VAT_PERCENT),
