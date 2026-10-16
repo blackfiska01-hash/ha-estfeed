@@ -63,7 +63,15 @@ from .const import (
     Resolution,
 )
 from .nps import NPS_PRICE_SETTLE_HOURS, EleringNpsClient, NpsError
-from .pricing import GridTariff, Tariff, cost_for_window, make_tariff, scheduled_tariff
+from .pricing import (
+    GridTariff,
+    HourlyFee,
+    Tariff,
+    cost_for_window,
+    make_tariff,
+    monthly_fee_per_hour,
+    scheduled_tariff,
+)
 from .statistics import (
     CostStream,
     PriceStream,
@@ -315,6 +323,22 @@ class EstfeedCoordinator(DataUpdateCoordinator[None]):
         use_spot = bool(opts.get(CONF_USE_SPOT_PRICE, DEFAULT_USE_SPOT_PRICE))
         return make_tariff(vat, margin, fees_eur_per_kwh=fees, grid=grid, use_spot=use_spot)
 
+    def _build_hourly_fee(self) -> HourlyFee | None:
+        """Per-hour share of the monthly fees in force; ``None`` when no period has any."""
+        sources = [self.options, *(period for _until, period in self._tariff_periods())]
+        if not any(float(o.get(CONF_MONTHLY_FEES_EUR) or 0) > 0 for o in sources):
+            return None
+
+        def monthly_fee_at(hour_utc: datetime) -> float:
+            opts = self._options_at(hour_utc)
+            return float(opts.get(CONF_MONTHLY_FEES_EUR, DEFAULT_MONTHLY_FEES_EUR) or 0)
+
+        return monthly_fee_per_hour(monthly_fee_at, dt_util.get_default_time_zone())
+
+    def _hourly_fee_for(self, kind: Kind) -> HourlyFee | None:
+        """Monthly fees belong to the consumption bill only, never to compensation."""
+        return self._build_hourly_fee() if kind == Kind.CONSUMPTION else None
+
     def price_at(self, hour_utc: datetime) -> float | None:
         """Billed EUR/kWh for the hour starting at ``hour_utc`` (top of hour, UTC).
 
@@ -332,9 +356,9 @@ class EstfeedCoordinator(DataUpdateCoordinator[None]):
     def bill_forecast(self, eic: str, now_utc: datetime) -> dict[str, Any] | None:
         """Projected bill for the current local month, EUR incl. VAT.
 
-        Prices the month's cached consumption up to the newest settled hour and
-        extrapolates that hourly rate over the whole month, then adds the fixed
-        monthly fees. Until a full day of the month has settled, the previous
+        Prices the month's cached consumption up to the newest settled hour
+        (including each hour's share of the monthly fees) and extrapolates that
+        hourly rate over the whole month, so the fees land in full. Until a full day of the month has settled, the previous
         month's rate is used instead so the first morning doesn't extrapolate
         from a couple of hours. ``None`` when nothing can be priced.
         """
@@ -363,13 +387,11 @@ class EstfeedCoordinator(DataUpdateCoordinator[None]):
             basis, basis_hours = "previous_month", (ms_utc - pm_utc).total_seconds() / 3600
         if result is None or basis_hours <= 0:
             return None
-        energy_cost, hours_without_price = result
-        projected_energy = energy_cost / basis_hours * month_hours
+        cost, hours_without_price = result
         return {
-            "forecast": round(projected_energy + fees, 2),
+            "forecast": round(cost / basis_hours * month_hours, 2),
             "basis": basis,
-            "energy_cost_so_far": round(energy_cost, 2) if basis == "month_to_date" else 0.0,
-            "projected_energy_cost": round(projected_energy, 2),
+            "cost_so_far": round(cost, 2) if basis == "month_to_date" else 0.0,
             "monthly_fees": round(fees, 2),
             "settled_until": settled_until.isoformat(),
             "hours_without_price": hours_without_price,
@@ -517,6 +539,7 @@ class EstfeedCoordinator(DataUpdateCoordinator[None]):
                     prices,
                     tariff,
                     prior_sum=prior_sum,
+                    hourly_fee=self._hourly_fee_for(cstream.kind),
                 )
         self._publish_price_statistics(full=True)
         self.async_update_listeners()
@@ -630,7 +653,13 @@ class EstfeedCoordinator(DataUpdateCoordinator[None]):
         if self._nps is None or not bucket:
             return None
         return cost_for_window(
-            bucket, kind, start_utc, end_utc, self._nps.cached_prices, self._build_tariff()
+            bucket,
+            kind,
+            start_utc,
+            end_utc,
+            self._nps.cached_prices,
+            self._build_tariff(),
+            hourly_fee=self._hourly_fee_for(kind),
         )
 
     async def _fetch_window(
@@ -808,6 +837,7 @@ class EstfeedCoordinator(DataUpdateCoordinator[None]):
                             prices,
                             tariff,
                             prior_sum=cost_prior_sums[cstream.statistic_id],
+                            hourly_fee=self._hourly_fee_for(cstream.kind),
                         )
             cursor = chunk_end
 

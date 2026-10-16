@@ -63,7 +63,11 @@ When you edit the tariff, set **Tariff valid from** to the date the new contract
 
 ### Price now and bill forecast
 
-Electricity meters also get `sensor.<n>_price_now` (EUR/kWh for the current hour under the tariff in force, refreshed hourly) and `sensor.<n>_bill_forecast` (this month's settled cost extrapolated to the whole month, plus **Monthly fees**; until a full day of the month has settled it uses the previous month's rate).
+Electricity meters also get `sensor.<n>_price_now` (EUR/kWh for the current hour under the tariff in force, refreshed hourly) and `sensor.<n>_bill_forecast` (this month's settled cost extrapolated to the whole month; until a full day of the month has settled it uses the previous month's rate).
+
+### Monthly fees
+
+**Monthly fees** (EUR incl. VAT: supplier and grid subscriptions) are spread evenly over the hours of each local month and added to the consumption cost statistic and cost sensors, so a month's cost on the Energy dashboard equals the bill. They are part of the tariff, so they are archived per tariff period and a change follows **Tariff valid from**. Compensation for production never includes them.
 
 ### Hourly price statistic
 
