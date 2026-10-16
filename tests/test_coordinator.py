@@ -1881,7 +1881,7 @@ async def test_price_at_spot_contract_uses_cached_spot_or_none(hass):
     assert coord.price_at(hour + timedelta(hours=1)) is None
 
 
-async def test_bill_forecast_extrapolates_month_and_adds_fees(hass):
+async def test_bill_forecast_extrapolates_month_including_fees(hass):
     await hass.config.async_set_time_zone("Europe/Tallinn")
     hass.config.country = "EE"
     coord = EstfeedCoordinator(
@@ -1900,11 +1900,59 @@ async def test_bill_forecast_extrapolates_month_and_adds_fees(hass):
     result = coord.bill_forecast(eic, datetime(2026, 10, 3, 9, tzinfo=UTC))
     assert result is not None
     assert result["basis"] == "month_to_date"
-    cost_two_days = result["energy_cost_so_far"]
-    # October 2026 has 745 hours (DST ends on the 25th).
-    expected = cost_two_days / 48 * 745 + 12.39
-    assert result["forecast"] == pytest.approx(expected, abs=0.02)
+    # 48 h settled; their cost includes 48/745 of the monthly fee (October 2026
+    # has 745 hours because DST ends on the 25th), so extrapolating to 745 h
+    # lands the full fee exactly once.
+    settled = month_start + timedelta(hours=48)
+    cost, _ = coord.cost_for_window(eic, Kind.CONSUMPTION, month_start, settled)
+    energy_only = cost - 12.39 * 48 / 745
+    assert energy_only > 0
+    assert result["forecast"] == pytest.approx(energy_only / 48 * 745 + 12.39, abs=0.01)
     assert result["monthly_fees"] == 12.39
+
+
+async def test_monthly_fee_is_added_to_consumption_cost_only(hass):
+    await hass.config.async_set_time_zone("Europe/Tallinn")
+    coord = EstfeedCoordinator(
+        hass=hass,
+        client=MagicMock(),
+        slug="home",
+        options={**_FIXED_TARIFF, CONF_MONTHLY_FEES_EUR: 74.4},
+    )
+    eic = "38ZEE-00720089-N"
+    start = datetime(2026, 5, 31, 21, tzinfo=UTC)  # 2026-06-01 00:00 Tallinn, 720 h month
+    coord.cache[(eic, Kind.CONSUMPTION)].extend(_hourly(start, 10, kwh=0.0))
+    coord.cache[(eic, Kind.PRODUCTION)].extend(_hourly(start, 10, kwh=0.0))
+    nps = EleringNpsClient(MagicMock())
+    nps._cache.update({start + timedelta(hours=h): 0.0 for h in range(10)})
+    coord.attach_nps_client(nps)
+    end = start + timedelta(hours=10)
+    # Zero kWh still costs 10 hours of the subscription: 74.4 / 720 * 10.
+    cost, _ = coord.cost_for_window(eic, Kind.CONSUMPTION, start, end)
+    assert cost == pytest.approx(74.4 / 720 * 10)
+    comp, _ = coord.cost_for_window(eic, Kind.PRODUCTION, start, end)
+    assert comp == pytest.approx(0.0)
+
+
+def test_no_hourly_fee_when_no_period_has_monthly_fees(hass):
+    coord = EstfeedCoordinator(hass=hass, client=MagicMock(), slug="home", options={})
+    assert coord._build_hourly_fee() is None
+
+
+async def test_monthly_fee_follows_tariff_periods(hass):
+    await hass.config.async_set_time_zone("Europe/Tallinn")
+    coord = EstfeedCoordinator(
+        hass=hass,
+        client=MagicMock(),
+        slug="home",
+        options={
+            CONF_MONTHLY_FEES_EUR: 14.4,
+            CONF_TARIFF_HISTORY: [{CONF_MONTHLY_FEES_EUR: 7.2, "until": "2026-07-01"}],
+        },
+    )
+    fee = coord._build_hourly_fee()
+    assert fee(datetime(2026, 6, 15, 9, tzinfo=UTC)) == pytest.approx(7.2 / 720)
+    assert fee(datetime(2026, 7, 15, 9, tzinfo=UTC)) == pytest.approx(14.4 / 744)
 
 
 async def test_bill_forecast_uses_previous_month_until_a_day_has_settled(hass):

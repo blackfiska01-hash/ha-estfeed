@@ -15,8 +15,10 @@ from custom_components.estfeed.pricing import (
     compute_cost_rows,
     compute_cost_rows_from_hourly,
     cost_for_window,
+    hours_in_local_month,
     insert_tariff_period,
     make_tariff,
+    monthly_fee_per_hour,
     scheduled_tariff,
 )
 
@@ -436,3 +438,24 @@ def test_insert_tariff_period_before_last_change_truncates_and_drops_superseded(
     ]
     on_boundary = insert_tariff_period(history, current, date(2026, 3, 1))
     assert on_boundary == [{"margin_eur_per_kwh": 0.10, "until": "2026-03-01"}]
+
+
+def test_hours_in_local_month_counts_dst_changes():
+    assert hours_in_local_month(datetime(2026, 10, 10, tzinfo=UTC), TALLINN) == 745
+    assert hours_in_local_month(datetime(2026, 3, 10, tzinfo=UTC), TALLINN) == 743
+    assert hours_in_local_month(datetime(2026, 6, 10, tzinfo=UTC), TALLINN) == 720
+
+
+def test_monthly_fee_shares_add_up_to_the_monthly_fee():
+    fee = monthly_fee_per_hour(lambda _h: 12.39, TALLINN)
+    start = datetime(2026, 9, 30, 21, tzinfo=UTC)  # 2026-10-01 00:00 Tallinn
+    total = sum(fee(start + timedelta(hours=h)) for h in range(745))
+    assert total == pytest.approx(12.39)
+
+
+def test_cost_rows_include_hourly_fee():
+    tariff = make_tariff(0.0, 0.0)
+    rows = compute_cost_rows_from_hourly(
+        {HOUR: 2.0}, {HOUR: 0.10}, tariff, prior_sum=1.0, hourly_fee=lambda _h: 0.05
+    )
+    assert rows[0]["sum"] == pytest.approx(1.0 + 2.0 * 0.10 + 0.05)

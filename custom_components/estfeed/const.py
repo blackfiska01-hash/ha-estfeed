@@ -36,8 +36,9 @@ CONF_USE_SPOT_PRICE: Final = "use_spot_price"
 CONF_TARIFF_EFFECTIVE_FROM: Final = "tariff_effective_from"
 # Stored list of closed tariff periods: [{"until": "YYYY-MM-DD", <tariff keys>}].
 CONF_TARIFF_HISTORY: Final = "tariff_history"
-# Fixed monthly charges incl. VAT (supplier + grid subscription), used only by
-# the bill forecast sensor.
+# Fixed monthly charges incl. VAT (supplier + grid subscription). Spread evenly
+# over the hours of each month and added to the consumption cost, so monthly
+# cost totals match the bill.
 CONF_MONTHLY_FEES_EUR: Final = "monthly_fees_eur"
 DEFAULT_VAT_PERCENT: Final = 22.0
 DEFAULT_MARGIN_EUR_PER_KWH: Final = 0.0
@@ -61,6 +62,7 @@ TARIFF_PRICING_KEYS: Final = (
     CONF_NIGHT_ON_WEEKENDS,
     CONF_NIGHT_ON_HOLIDAYS,
     CONF_USE_SPOT_PRICE,
+    CONF_MONTHLY_FEES_EUR,
 )
 # Options that feed the cost statistics; changing any of them triggers a rebuild.
 TARIFF_OPTION_KEYS: Final = (*TARIFF_PRICING_KEYS, CONF_TARIFF_HISTORY)
@@ -76,6 +78,7 @@ TARIFF_DEFAULTS: Final = {
     CONF_NIGHT_ON_WEEKENDS: DEFAULT_NIGHT_ON_WEEKENDS,
     CONF_NIGHT_ON_HOLIDAYS: DEFAULT_NIGHT_ON_HOLIDAYS,
     CONF_USE_SPOT_PRICE: DEFAULT_USE_SPOT_PRICE,
+    CONF_MONTHLY_FEES_EUR: DEFAULT_MONTHLY_FEES_EUR,
 }
 
 UPDATE_INTERVAL: Final = timedelta(hours=1)
