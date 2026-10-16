@@ -21,6 +21,7 @@ from custom_components.estfeed.const import (
     CONF_GRID_NIGHT_EUR_PER_KWH,
     CONF_MARGIN_EUR_PER_KWH,
     CONF_RESOLUTION,
+    CONF_USE_SPOT_PRICE,
     CONF_VAT_PERCENT,
     CommodityType,
     Kind,
@@ -1839,3 +1840,30 @@ async def test_quarter_hour_updates_preserve_all_quarters_across_ticks(hass):
             force_start=False,
         )
     assert [row["sum"] for row in published[consumption_id]] == [4.0, 8.0, 12.0]
+
+
+async def test_build_tariff_fixed_price_contract_ignores_spot(hass):
+    """use_spot_price off: margin is the fixed energy price, spot has no effect."""
+    await hass.config.async_set_time_zone("Europe/Tallinn")
+    hass.config.country = "EE"
+    coord = EstfeedCoordinator(
+        hass=hass,
+        client=MagicMock(),
+        slug="home",
+        options={
+            CONF_USE_SPOT_PRICE: False,
+            CONF_VAT_PERCENT: 24.0,
+            CONF_MARGIN_EUR_PER_KWH: 0.1290,
+            CONF_FEES_EUR_PER_KWH: 0.01808,
+            CONF_GRID_DAY_EUR_PER_KWH: 0.0753 / 1.24,
+            CONF_GRID_NIGHT_EUR_PER_KWH: 0.0435 / 1.24,
+        },
+    )
+    tariff = coord._build_tariff()
+    # Fri 2026-10-16 08:00 UTC = 11:00 Tallinn -> day; spot must not matter.
+    day_hour = datetime(2026, 10, 16, 8, tzinfo=UTC)
+    assert tariff(0.05, day_hour) == pytest.approx(0.1290 + 0.0753 + 0.01808 * 1.24)
+    assert tariff(0.50, day_hour) == pytest.approx(tariff(0.0, day_hour))
+    # Sat 2026-10-17 noon -> night rate all day.
+    weekend = tariff(0.05, datetime(2026, 10, 17, 9, tzinfo=UTC))
+    assert weekend == pytest.approx(0.1290 + 0.0435 + 0.01808 * 1.24)

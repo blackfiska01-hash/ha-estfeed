@@ -390,3 +390,9 @@ def test_cost_for_window_production_kind_empty_when_no_production():
         make_tariff(0.0, 0.0),
     )
     assert (total, missing) == (0.0, 0)
+
+
+def test_make_tariff_without_spot_uses_margin_as_fixed_price():
+    tariff = make_tariff(24.0, 0.129, fees_eur_per_kwh=0.018, use_spot=False)
+    assert tariff(0.30, HOUR) == pytest.approx(0.018 * 1.24 + 0.129)
+    assert tariff(-0.02, HOUR) == pytest.approx(tariff(0.0, HOUR))

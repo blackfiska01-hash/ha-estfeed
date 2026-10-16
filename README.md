@@ -45,6 +45,18 @@ Set these in the integration options. The defaults are **22% VAT** and 0 for eve
 
 These EUR estimates leave out time-windowed supplier margins, monthly fixed charges and anything else not priced per kWh, and approximate quarter-hour pricing with the hourly mean. They are labelled EUR regardless of Home Assistant's currency setting. Use the dashboard's own price configuration if needed.
 
+### Fixed-price contracts
+
+[#fixed-price-contracts](#fixed-price-contracts)
+
+On a fixed-price (non-exchange) contract, turn **off** "Exchange (spot) price contract" (`use_spot_price`) in the integration options. The spot price is then ignored and the tariff becomes:
+
+```
+(grid transfer + fees) × (1 + VAT%/100) + margin
+```
+
+where **margin** is your fixed energy price per kWh incl. VAT. Grid day/night rates, weekends and public holidays work exactly as above, and changing the option rebuilds the cost history over the backfill window.
+
 ### Hourly price statistic
 
 Electricity entries also publish `estfeed:<name>_price` (unit `EUR/kWh`, mean/min/max per hour): the full tariff price of every hour the integration has spot prices for, including the day-ahead hours Elering has already published, so price history is available from the first install rather than from whenever a price sensor started being recorded. Every hourly tick writes the hours that are new or changed, a restart or backfill writes the whole cached window, and a tariff option change rewrites it. Plot it with the core `statistics-graph` card or any card that reads `recorder/statistics_during_period`.

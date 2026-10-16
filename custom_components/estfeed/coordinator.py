@@ -40,6 +40,7 @@ from .const import (
     CONF_NIGHT_ON_WEEKENDS,
     CONF_NIGHT_START_HOUR,
     CONF_RESOLUTION,
+    CONF_USE_SPOT_PRICE,
     CONF_VAT_PERCENT,
     DAY_AHEAD_HORIZON_DAYS,
     DEFAULT_FEES_EUR_PER_KWH,
@@ -49,6 +50,7 @@ from .const import (
     DEFAULT_NIGHT_ON_HOLIDAYS,
     DEFAULT_NIGHT_ON_WEEKENDS,
     DEFAULT_NIGHT_START_HOUR,
+    DEFAULT_USE_SPOT_PRICE,
     DEFAULT_VAT_PERCENT,
     DOMAIN,
     MAX_DAYS_PER_REQUEST,
@@ -274,7 +276,8 @@ class EstfeedCoordinator(DataUpdateCoordinator[None]):
             tz=dt_util.get_default_time_zone(),
             holidays=self._public_holidays(),
         )
-        return make_tariff(vat, margin, fees_eur_per_kwh=fees, grid=grid)
+        use_spot = bool(opts.get(CONF_USE_SPOT_PRICE, DEFAULT_USE_SPOT_PRICE))
+        return make_tariff(vat, margin, fees_eur_per_kwh=fees, grid=grid, use_spot=use_spot)
 
     def _public_holidays(self) -> Container[date]:
         """Public holidays for HA's configured country; empty when unset or unsupported."""

@@ -82,13 +82,19 @@ def make_tariff(
     margin_eur_per_kwh: float,
     fees_eur_per_kwh: float = 0.0,
     grid: GridTariff | None = None,
+    use_spot: bool = True,
 ) -> Tariff:
-    """Curry apply_tariff so cost builders can call ``tariff(spot, hour)``."""
+    """Curry apply_tariff so cost builders can call ``tariff(spot, hour)``.
+
+    With ``use_spot`` off the spot price is ignored (treated as 0), so a
+    fixed-price contract is modelled as ``(grid + fees) x VAT + margin`` where
+    ``margin`` carries the fixed energy price incl. VAT.
+    """
     grid_tariff = grid if grid is not None else GridTariff()
 
     def tariff(spot_eur_per_kwh: float, hour_utc: datetime) -> float:
         return apply_tariff(
-            spot_eur_per_kwh,
+            spot_eur_per_kwh if use_spot else 0.0,
             vat_percent,
             margin_eur_per_kwh,
             grid_eur_per_kwh=grid_tariff.rate(hour_utc),
