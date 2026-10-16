@@ -20,7 +20,9 @@ from custom_components.estfeed.const import (
     CONF_GRID_DAY_EUR_PER_KWH,
     CONF_GRID_NIGHT_EUR_PER_KWH,
     CONF_MARGIN_EUR_PER_KWH,
+    CONF_MONTHLY_FEES_EUR,
     CONF_RESOLUTION,
+    CONF_TARIFF_HISTORY,
     CONF_USE_SPOT_PRICE,
     CONF_VAT_PERCENT,
     CommodityType,
@@ -1867,3 +1869,116 @@ async def test_build_tariff_fixed_price_contract_ignores_spot(hass):
     # Sat 2026-10-17 noon -> night rate all day.
     weekend = tariff(0.05, datetime(2026, 10, 17, 9, tzinfo=UTC))
     assert weekend == pytest.approx(0.1290 + 0.0435 + 0.01808 * 1.24)
+
+
+_FIXED_TARIFF = {
+    CONF_USE_SPOT_PRICE: False,
+    CONF_VAT_PERCENT: 24.0,
+    CONF_MARGIN_EUR_PER_KWH: 0.129,
+    CONF_FEES_EUR_PER_KWH: 0.01808,
+    CONF_GRID_DAY_EUR_PER_KWH: 0.060726,
+    CONF_GRID_NIGHT_EUR_PER_KWH: 0.035081,
+}
+_FIXED_DAY = 0.129 + (0.060726 + 0.01808) * 1.24
+_FIXED_NIGHT = 0.129 + (0.035081 + 0.01808) * 1.24
+
+
+async def test_tariff_history_keeps_earlier_hours_on_the_old_contract(hass):
+    await hass.config.async_set_time_zone("Europe/Tallinn")
+    hass.config.country = "EE"
+    spot_contract = {
+        CONF_USE_SPOT_PRICE: True,
+        CONF_VAT_PERCENT: 24.0,
+        CONF_MARGIN_EUR_PER_KWH: 0.005,
+        CONF_FEES_EUR_PER_KWH: 0.01808,
+        CONF_GRID_DAY_EUR_PER_KWH: 0.060726,
+        CONF_GRID_NIGHT_EUR_PER_KWH: 0.035081,
+    }
+    coord = EstfeedCoordinator(
+        hass=hass,
+        client=MagicMock(),
+        slug="home",
+        options={**spot_contract, CONF_TARIFF_HISTORY: [{**_FIXED_TARIFF, "until": "2027-01-01"}]},
+    )
+    tariff = coord._build_tariff()
+    # Thu 2026-12-17 noon Tallinn: still the fixed contract, spot ignored.
+    assert tariff(0.30, datetime(2026, 12, 17, 10, tzinfo=UTC)) == pytest.approx(_FIXED_DAY)
+    # Tue 2027-01-05 noon Tallinn: spot contract.
+    assert tariff(0.30, datetime(2027, 1, 5, 10, tzinfo=UTC)) == pytest.approx(
+        (0.30 + 0.060726 + 0.01808) * 1.24 + 0.005
+    )
+
+
+def test_malformed_tariff_period_is_ignored(hass):
+    coord = EstfeedCoordinator(
+        hass=hass,
+        client=MagicMock(),
+        slug="home",
+        options={CONF_TARIFF_HISTORY: [{"until": "not-a-date"}, {"margin_eur_per_kwh": 1}]},
+    )
+    assert coord._tariff_periods() == []
+
+
+async def test_price_at_fixed_contract_needs_no_spot_price(hass):
+    await hass.config.async_set_time_zone("Europe/Tallinn")
+    hass.config.country = "EE"
+    coord = EstfeedCoordinator(hass=hass, client=MagicMock(), slug="home", options=_FIXED_TARIFF)
+    coord.attach_nps_client(EleringNpsClient(MagicMock()))
+    # Fri 2026-10-16 09:20 UTC = 12:20 Tallinn, a workday -> day rate.
+    assert coord.price_at(datetime(2026, 10, 16, 9, 20, tzinfo=UTC)) == pytest.approx(_FIXED_DAY)
+    # Sat -> night rate.
+    assert coord.price_at(datetime(2026, 10, 17, 9, tzinfo=UTC)) == pytest.approx(_FIXED_NIGHT)
+
+
+async def test_price_at_spot_contract_uses_cached_spot_or_none(hass):
+    await hass.config.async_set_time_zone("Europe/Tallinn")
+    coord = EstfeedCoordinator(
+        hass=hass, client=MagicMock(), slug="home", options={CONF_VAT_PERCENT: 24.0}
+    )
+    nps = EleringNpsClient(MagicMock())
+    hour = datetime(2026, 10, 16, 9, tzinfo=UTC)
+    nps._cache[hour] = 0.10
+    coord.attach_nps_client(nps)
+    assert coord.price_at(hour.replace(minute=40)) == pytest.approx(0.124)
+    assert coord.price_at(hour + timedelta(hours=1)) is None
+
+
+async def test_bill_forecast_extrapolates_month_and_adds_fees(hass):
+    await hass.config.async_set_time_zone("Europe/Tallinn")
+    hass.config.country = "EE"
+    coord = EstfeedCoordinator(
+        hass=hass,
+        client=MagicMock(),
+        slug="home",
+        options={**_FIXED_TARIFF, CONF_MONTHLY_FEES_EUR: 12.39},
+    )
+    eic = "38ZEE-00720089-N"
+    month_start = datetime(2026, 9, 30, 21, tzinfo=UTC)  # 2026-10-01 00:00 Tallinn
+    coord.cache[(eic, Kind.CONSUMPTION)].extend(_hourly(month_start, 48, kwh=1.0))
+    nps = EleringNpsClient(MagicMock())
+    nps._cache.update({month_start + timedelta(hours=h): 0.0 for h in range(48)})
+    coord.attach_nps_client(nps)
+
+    result = coord.bill_forecast(eic, datetime(2026, 10, 3, 9, tzinfo=UTC))
+    assert result is not None
+    assert result["basis"] == "month_to_date"
+    cost_two_days = result["energy_cost_so_far"]
+    # October 2026 has 745 hours (DST ends on the 25th).
+    expected = cost_two_days / 48 * 745 + 12.39
+    assert result["forecast"] == pytest.approx(expected, abs=0.02)
+    assert result["monthly_fees"] == 12.39
+
+
+async def test_bill_forecast_uses_previous_month_until_a_day_has_settled(hass):
+    await hass.config.async_set_time_zone("Europe/Tallinn")
+    coord = EstfeedCoordinator(
+        hass=hass, client=MagicMock(), slug="home", options={**_FIXED_TARIFF}
+    )
+    eic = "38ZEE-00720089-N"
+    sep_start = datetime(2026, 8, 31, 21, tzinfo=UTC)
+    coord.cache[(eic, Kind.CONSUMPTION)].extend(_hourly(sep_start, 720 + 3, kwh=0.5))
+    nps = EleringNpsClient(MagicMock())
+    coord.attach_nps_client(nps)
+    result = coord.bill_forecast(eic, datetime(2026, 10, 1, 4, tzinfo=UTC))
+    assert result is not None
+    assert result["basis"] == "previous_month"
