@@ -372,10 +372,20 @@ async def test_options_tariff_change_without_date_applies_to_all_history(hass):
     assert entry.options[CONF_TARIFF_HISTORY] == []
 
 
-async def test_options_unchanged_tariff_keeps_history_and_stores_monthly_fees(hass):
+async def test_options_unchanged_tariff_keeps_history(hass):
     history = [{CONF_MARGIN_EUR_PER_KWH: 0.2, "until": "2026-01-01"}]
     entry, result = await _open_options(hass, {**_FIXED, CONF_TARIFF_HISTORY: history})
-    submission = {**_FIXED, CONF_MONTHLY_FEES_EUR: 12.39, CONF_TARIFF_EFFECTIVE_FROM: "2026-10-16"}
+    submission = {**_FIXED, "backfill_months": 6, CONF_TARIFF_EFFECTIVE_FROM: "2026-10-16"}
     await hass.config_entries.options.async_configure(result["flow_id"], submission)
     assert entry.options[CONF_TARIFF_HISTORY] == history
-    assert entry.options[CONF_MONTHLY_FEES_EUR] == 12.39
+    assert entry.options["backfill_months"] == 6
+
+
+async def test_options_monthly_fee_change_with_date_is_a_tariff_period(hass):
+    entry, result = await _open_options(hass, {**_FIXED, CONF_MONTHLY_FEES_EUR: 12.39})
+    submission = {**_FIXED, CONF_MONTHLY_FEES_EUR: 15.0, CONF_TARIFF_EFFECTIVE_FROM: "2027-02-01"}
+    await hass.config_entries.options.async_configure(result["flow_id"], submission)
+    history = entry.options[CONF_TARIFF_HISTORY]
+    assert history == [{**history[0], "until": "2027-02-01"}]
+    assert history[0][CONF_MONTHLY_FEES_EUR] == 12.39
+    assert entry.options[CONF_MONTHLY_FEES_EUR] == 15.0

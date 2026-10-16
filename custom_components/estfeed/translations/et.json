@@ -45,7 +45,7 @@
           "night_end_hour": "Öötariif lõpeb (tund, kohalik aeg)",
           "night_on_weekends": "Öötariif kogu nädalavahetusel",
           "night_on_holidays": "Öötariif riigipühadel",
-          "monthly_fees_eur": "Kuutasud koos KM-ga, EUR (müüja + võrgu kuutasu; arve prognoosiks)"
+          "monthly_fees_eur": "Kuutasud koos KM-ga, EUR (müüja + võrgu kuutasu) — jaotatakse kuu tundidele ja lisatakse kulule"
         },
         "description": "Tariifiperioodid:\n{history}\n\nTariifi muutes märgi kuupäev, millest see kehtib: varasemad tunnid jäävad vana tariifiga. Jäta kuupäev tühjaks ainult siis, kui parandad tariifi kogu ajaloo jaoks."
       }
