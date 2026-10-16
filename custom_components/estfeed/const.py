@@ -28,6 +28,9 @@ CONF_NIGHT_START_HOUR: Final = "night_start_hour"
 CONF_NIGHT_END_HOUR: Final = "night_end_hour"
 CONF_NIGHT_ON_WEEKENDS: Final = "night_on_weekends"
 CONF_NIGHT_ON_HOLIDAYS: Final = "night_on_holidays"
+# When off, the Nord Pool spot is ignored and the margin is the fixed energy
+# price of a fixed-price contract (EUR/kWh incl. VAT).
+CONF_USE_SPOT_PRICE: Final = "use_spot_price"
 DEFAULT_VAT_PERCENT: Final = 22.0
 DEFAULT_MARGIN_EUR_PER_KWH: Final = 0.0
 DEFAULT_FEES_EUR_PER_KWH: Final = 0.0
@@ -36,6 +39,7 @@ DEFAULT_NIGHT_START_HOUR: Final = 22
 DEFAULT_NIGHT_END_HOUR: Final = 7
 DEFAULT_NIGHT_ON_WEEKENDS: Final = True
 DEFAULT_NIGHT_ON_HOLIDAYS: Final = True
+DEFAULT_USE_SPOT_PRICE: Final = True
 # Options that feed the tariff; changing any of them triggers a cost rebuild.
 TARIFF_OPTION_KEYS: Final = (
     CONF_VAT_PERCENT,
@@ -47,6 +51,7 @@ TARIFF_OPTION_KEYS: Final = (
     CONF_NIGHT_END_HOUR,
     CONF_NIGHT_ON_WEEKENDS,
     CONF_NIGHT_ON_HOLIDAYS,
+    CONF_USE_SPOT_PRICE,
 )
 
 UPDATE_INTERVAL: Final = timedelta(hours=1)

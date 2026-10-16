@@ -51,6 +51,18 @@ Both are computed by multiplying each hour's consumption/production by the match
 
 Defaults: VAT 22 %, everything else 0, which reduces to the previous `spot × VAT + margin` behaviour. Example for an Elektrilevi "Võrk 4" contract with Alexela (2026): grid day 0.0369, night 0.021, fees 0.0219, VAT 24, margin 0.0047. Adjust in the integration options. Prices are denominated in **EUR** (the NPS API's native currency); the statistics are labelled EUR regardless of your Home Assistant currency setting.
 
+### Fixed-price contracts
+
+[#fixed-price-contracts](#fixed-price-contracts)
+
+On a fixed-price (non-exchange) contract, turn **off** "Exchange (spot) price contract" (`use_spot_price`) in the integration options. The spot price is then ignored and the tariff becomes:
+
+```
+(grid transfer + fees) × (1 + VAT%/100) + margin
+```
+
+where **margin** is your fixed energy price per kWh incl. VAT. Grid day/night rates, weekends and public holidays work exactly as above, and changing the option rebuilds the cost history over the backfill window.
+
 ### Hourly price statistic
 
 Electricity entries also publish `estfeed:<your_name>_price` (unit `EUR/kWh`, mean/min/max per hour): the full tariff price of every hour the integration has spot prices for, including the day-ahead hours Elering has already published, so price history is available from the first install rather than from whenever a price sensor started being recorded. Every hourly tick writes the hours that are new or changed, a restart or backfill writes the whole cached window, and a tariff option change rewrites it. Plot it with the core `statistics-graph` card or any card that reads `recorder/statistics_during_period`.
