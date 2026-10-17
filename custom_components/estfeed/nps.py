@@ -10,6 +10,7 @@ windows hits the network at most once per gap.
 from __future__ import annotations
 
 import logging
+import math
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from types import MappingProxyType
@@ -140,6 +141,8 @@ class EleringNpsClient:
                 if resp.status != 200:
                     raise NpsError(f"NPS returned status {resp.status}")
                 payload = await resp.json(content_type=None)
+        except ValueError as err:
+            raise NpsError("NPS returned invalid JSON") from err
         except aiohttp.ClientError as err:
             raise NpsError(f"NPS request failed: {err}") from err
         except TimeoutError as err:
@@ -149,25 +152,33 @@ class EleringNpsClient:
         # up to 4 quarter rows. Aggregate to the hourly mean before caching —
         # writing each row directly would let the last :45 quarter overwrite
         # the others and badly mis-represent volatile hours.
-        rows = (payload or {}).get("data", {}).get("ee", [])
-        end_ts = end.timestamp()
-        buckets: dict[datetime, list[tuple[int, float]]] = {}
-        for row in rows:
-            ts = row.get("timestamp")
-            price_eur_per_mwh = row.get("price")
-            if ts is None or price_eur_per_mwh is None:
-                continue
-            ts = int(ts)
-            # Elering treats ``end`` as inclusive and returns the quarter that
-            # starts exactly there. Every hourly tick asks for prices up to the
-            # current hour, so without this the current hour was cached as a
-            # one-quarter mean and, being "known", never fetched again; the
-            # cost of that hour was then priced off a single quarter.
-            if ts >= end_ts:
-                continue
-            at = datetime.fromtimestamp(ts, tz=UTC)
-            hour = at.replace(minute=0, second=0, microsecond=0)
-            buckets.setdefault(hour, []).append((at.minute, float(price_eur_per_mwh)))
+        try:
+            if not isinstance(payload, dict) or payload.get("success") is False:
+                raise ValueError("Unsuccessful price response")
+            rows = payload["data"]["ee"]
+            if not isinstance(rows, list):
+                raise TypeError("Expected a list of prices")
+            buckets: dict[datetime, list[tuple[int, float]]] = {}
+            for row in rows:
+                ts = row.get("timestamp")
+                price_eur_per_mwh = row.get("price")
+                if ts is None or price_eur_per_mwh is None:
+                    continue
+                price = float(price_eur_per_mwh)
+                if not math.isfinite(price):
+                    raise ValueError("Non-finite price")
+                at = datetime.fromtimestamp(int(ts), tz=UTC)
+                # Elering treats ``end`` as inclusive and returns the quarter that
+                # starts exactly there. Every hourly tick asks for prices up to the
+                # current hour, so without this the current hour was cached as a
+                # one-quarter mean and, being "known", never fetched again; the
+                # cost of that hour was then priced off a single quarter.
+                if not start <= at < end:
+                    continue
+                hour = at.replace(minute=0, second=0, microsecond=0)
+                buckets.setdefault(hour, []).append((at.minute, price))
+        except (KeyError, TypeError, ValueError, AttributeError, OverflowError, OSError) as err:
+            raise NpsError("NPS returned invalid price data") from err
         for hour, quarters in buckets.items():
             # An hour of quarter data with quarters missing is incomplete; leave
             # it out of the cache so the next call fetches it again. Hourly-era
