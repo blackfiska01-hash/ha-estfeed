@@ -166,6 +166,16 @@ class EstfeedCoordinator(DataUpdateCoordinator[None]):
         # only re-sends hours that are new or whose cached price changed.
         self._published_prices: dict[datetime, float] = {}
         self.last_nps_error: str | None = None
+        # (country, calendar). ``holidays.country_holidays`` imports the country
+        # module and its translations from disk, so setup preloads it in the
+        # executor (``async_load_holidays``) instead of doing it in the loop.
+        self._holidays_cache: tuple[str | None, Container[date]] | None = None
+
+    async def async_load_holidays(self) -> None:
+        """Load the public-holiday calendar off the event loop."""
+        country = self.hass.config.country
+        calendar = await self.hass.async_add_executor_job(self._load_public_holidays, country)
+        self._holidays_cache = (country, calendar)
 
     def attach_nps_client(self, nps: EleringNpsClient) -> None:
         """Inject the NPS price client. Called from setup_entry (production)
@@ -400,6 +410,16 @@ class EstfeedCoordinator(DataUpdateCoordinator[None]):
     def _public_holidays(self) -> Container[date]:
         """Public holidays for HA's configured country; empty when unset or unsupported."""
         country = self.hass.config.country
+        cached = self._holidays_cache
+        if cached is not None and cached[0] == country:
+            return cached[1]
+        calendar = self._load_public_holidays(country)
+        self._holidays_cache = (country, calendar)
+        return calendar
+
+    @staticmethod
+    def _load_public_holidays(country: str | None) -> Container[date]:
+        """Build the holiday calendar for ``country`` (blocking: imports modules)."""
         if not country:
             return frozenset()
         try:
