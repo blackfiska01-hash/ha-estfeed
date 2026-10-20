@@ -521,7 +521,7 @@ async def test_cache_warmup_populates_rolling_cache(hass):
 
 
 @pytest.mark.asyncio
-async def test_warm_cache_notifies_listeners(hass):
+async def test_warm_cache_notifies_listeners(hass, request):
     """Regression: lagging sensors compute from the cache, so warm_cache and
     initial_backfill must push to coordinator listeners after the background
     fill completes. Without this, CoordinatorEntity state stays frozen at
@@ -540,7 +540,7 @@ async def test_warm_cache_notifies_listeners(hass):
     )
     coordinator.meters = [_make_meter()]
     listener = MagicMock()
-    coordinator.async_add_listener(listener)
+    request.addfinalizer(coordinator.async_add_listener(listener))
     with (
         patch(
             "custom_components.estfeed.coordinator.get_instance",
@@ -556,7 +556,7 @@ async def test_warm_cache_notifies_listeners(hass):
 
 
 @pytest.mark.asyncio
-async def test_initial_backfill_notifies_listeners(hass):
+async def test_initial_backfill_notifies_listeners(hass, request):
     """Same regression as warm_cache, applied to the initial-install path."""
     client = MagicMock()
     client.list_metering_points = AsyncMock(return_value=[_make_meter()])
@@ -571,7 +571,7 @@ async def test_initial_backfill_notifies_listeners(hass):
     )
     coordinator.meters = [_make_meter()]
     listener = MagicMock()
-    coordinator.async_add_listener(listener)
+    request.addfinalizer(coordinator.async_add_listener(listener))
     with (
         patch(
             "custom_components.estfeed.coordinator.get_instance",

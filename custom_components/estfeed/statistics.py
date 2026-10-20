@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
 from homeassistant.components.recorder.statistics import async_add_external_statistics
@@ -19,9 +19,7 @@ from .pricing import Tariff, compute_cost_rows, compute_cost_rows_from_hourly
 # don't expose StatisticMeanType. Detect at import time and only set the field
 # when the enum is available.
 try:
-    from homeassistant.components.recorder.models import (  # type: ignore[attr-defined]
-        StatisticMeanType,
-    )
+    from homeassistant.components.recorder.models import StatisticMeanType
 
     _MEAN_TYPE_NONE: Any = StatisticMeanType.NONE
     _MEAN_TYPE_ARITHMETIC: Any = StatisticMeanType.ARITHMETIC
@@ -42,6 +40,33 @@ _UNIT_CLASS_BY_UNIT = {
 # StatisticRow from this module. The recorder's StatisticData TypedDict already
 # allows start/state/sum (plus optional fields), so we use it directly.
 StatisticRow = StatisticData
+
+
+def _metadata(
+    stream: StatisticStream | CostStream | PriceStream,
+    *,
+    has_sum: bool,
+    mean_type: Any,
+    unit_class: str | None = None,
+) -> StatisticMetaData:
+    """Build recorder metadata, adding the keys only newer HA versions know.
+
+    ``mean_type`` is None where the enum does not exist; HA versions that
+    predate ``unit_class`` ignore the key. Built as a plain dict because the
+    TypedDict of the installed HA decides which of the two keys are declared.
+    """
+    metadata: dict[str, Any] = {
+        "source": DOMAIN,
+        "statistic_id": stream.statistic_id,
+        "name": stream.name,
+        "unit_of_measurement": stream.unit,
+        "has_sum": has_sum,
+        "has_mean": not has_sum,
+        "unit_class": unit_class,
+    }
+    if mean_type is not None:
+        metadata["mean_type"] = mean_type
+    return cast(StatisticMetaData, metadata)
 
 
 def eic_suffix(eic: str) -> str:
@@ -118,19 +143,12 @@ async def async_write_meter_statistics(
     rows = compute_statistic_rows(intervals, stream.kind, prior_sum=prior_sum)
     if not rows:
         return prior_sum
-    metadata: StatisticMetaData = {
-        "source": DOMAIN,
-        "statistic_id": stream.statistic_id,
-        "name": stream.name,
-        "unit_of_measurement": stream.unit,
-        "has_sum": True,
-        "has_mean": False,
-    }
-    if _MEAN_TYPE_NONE is not None:
-        # Required from HA 2026.11; absent on older HA versions where the
-        # enum doesn't exist (the metadata key is ignored there).
-        metadata["mean_type"] = _MEAN_TYPE_NONE  # type: ignore[typeddict-unknown-key]
-    metadata["unit_class"] = _UNIT_CLASS_BY_UNIT.get(stream.unit)  # type: ignore[typeddict-unknown-key]
+    metadata = _metadata(
+        stream,
+        has_sum=True,
+        mean_type=_MEAN_TYPE_NONE,
+        unit_class=_UNIT_CLASS_BY_UNIT.get(stream.unit),
+    )
     # async_add_external_statistics is a synchronous @callback in this HA version
     # (inspect.iscoroutinefunction returned False); no await needed.
     async_add_external_statistics(hass, metadata, rows)
@@ -157,17 +175,7 @@ def _publish_cost_rows(
     """Publish prebuilt cost rows and return the new running cumulative sum."""
     if not rows:
         return prior_sum
-    metadata: StatisticMetaData = {
-        "source": DOMAIN,
-        "statistic_id": stream.statistic_id,
-        "name": stream.name,
-        "unit_of_measurement": stream.unit,
-        "has_sum": True,
-        "has_mean": False,
-    }
-    if _MEAN_TYPE_NONE is not None:
-        metadata["mean_type"] = _MEAN_TYPE_NONE  # type: ignore[typeddict-unknown-key]
-    metadata["unit_class"] = None  # type: ignore[typeddict-unknown-key]
+    metadata = _metadata(stream, has_sum=True, mean_type=_MEAN_TYPE_NONE)
     async_add_external_statistics(hass, metadata, rows)
     last_sum = rows[-1].get("sum")
     return float(last_sum) if last_sum is not None else prior_sum
@@ -247,15 +255,5 @@ def async_write_price_statistics(
     """
     if not rows:
         return
-    metadata: StatisticMetaData = {
-        "source": DOMAIN,
-        "statistic_id": stream.statistic_id,
-        "name": stream.name,
-        "unit_of_measurement": stream.unit,
-        "has_sum": False,
-        "has_mean": True,
-    }
-    if _MEAN_TYPE_ARITHMETIC is not None:
-        metadata["mean_type"] = _MEAN_TYPE_ARITHMETIC  # type: ignore[typeddict-unknown-key]
-    metadata["unit_class"] = None  # type: ignore[typeddict-unknown-key]
+    metadata = _metadata(stream, has_sum=False, mean_type=_MEAN_TYPE_ARITHMETIC)
     async_add_external_statistics(hass, metadata, rows)

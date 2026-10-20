@@ -76,7 +76,7 @@ Omitting `entry_id` targets every loaded Estfeed entry. A reset timestamp withou
 
 ## Development
 
-Use Python 3.12 or later in a virtual environment:
+Use Python 3.14 or later, which current Home Assistant releases require, in a virtual environment:
 
 ```bash
 python -m venv .venv

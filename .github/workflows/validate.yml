@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.14"
       - run: pip install -e '.[dev]' --config-settings editable_mode=compat
       - run: ruff check custom_components tests scripts
       - run: ruff format --check custom_components tests scripts
