@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict, deque
-from collections.abc import Container, Mapping
+from collections.abc import Container, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta, tzinfo
 from typing import Any
@@ -298,8 +298,8 @@ class EstfeedCoordinator(DataUpdateCoordinator[None]):
         for period in self.options.get(CONF_TARIFF_HISTORY) or []:
             try:
                 periods.append((date.fromisoformat(str(period["until"])), period))
-            except (KeyError, TypeError, ValueError):
-                _LOGGER.warning("Ignoring malformed tariff period: %s", period)
+            except (KeyError, TypeError, ValueError) as err:
+                _LOGGER.warning("Ignoring malformed tariff period %s: %s", period, err)
         return sorted(periods, key=lambda item: item[0])
 
     def _options_at(self, hour_utc: datetime) -> Mapping[str, Any]:
@@ -381,7 +381,7 @@ class EstfeedCoordinator(DataUpdateCoordinator[None]):
         month_hours = (nm_utc - ms_utc).total_seconds() / 3600
         fees = float(self.options.get(CONF_MONTHLY_FEES_EUR, DEFAULT_MONTHLY_FEES_EUR))
 
-        bucket = self.cache.get((eic, Kind.CONSUMPTION)) or []
+        bucket: Iterable[AccountingInterval] = self.cache.get((eic, Kind.CONSUMPTION)) or ()
         latest = max((i.period_start for i in bucket if i.period_start >= ms_utc), default=None)
         settled_until = (
             latest.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
