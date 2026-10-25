@@ -6,16 +6,17 @@ build-backend = "setuptools.build_meta"
 name = "ha-estfeed"
 version = "0.5.1"
 description = "Home Assistant integration for Elering Estfeed metering data"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 dependencies = ["holidays>=0.50"]
 
 [project.optional-dependencies]
 dev = [
-  "homeassistant",
   "pytest",
   "pytest-asyncio",
   "pytest-cov",
-  "pytest-homeassistant-custom-component",
+  # The exact pin selects the Home Assistant release (it pins homeassistant itself);
+  # move it with the homelab's Home Assistant image.
+  "pytest-homeassistant-custom-component==0.13.367",
   "aioresponses",
   "freezegun",
   "ruff",
@@ -23,7 +24,7 @@ dev = [
 ]
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py314"
 line-length = 100
 
 [tool.ruff.lint]
@@ -31,7 +32,7 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM", "ARG", "RUF"]
 ignore = ["E501"]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.14"
 strict = true
 files = ["custom_components/estfeed"]
 plugins = []
@@ -46,5 +47,6 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 addopts = "-v --tb=short"
